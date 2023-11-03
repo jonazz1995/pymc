@@ -44,17 +44,10 @@ import scipy.stats.distributions as sp
 
 from pytensor.graph.basic import ancestors, equal_computations
 from pytensor.tensor.random.op import RandomVariable
-from pytensor.tensor.subtensor import (
-    AdvancedIncSubtensor,
-    AdvancedIncSubtensor1,
-    AdvancedSubtensor,
-    AdvancedSubtensor1,
-    IncSubtensor,
-    Subtensor,
-)
 
 import pymc as pm
 
+from pymc.distributions.transforms import LogTransform
 from pymc.logprob.basic import (
     conditional_logp,
     icdf,
@@ -62,14 +55,12 @@ from pymc.logprob.basic import (
     logp,
     transformed_conditional_logp,
 )
-from pymc.logprob.transforms import LogTransform
-from pymc.logprob.utils import rvs_to_value_vars, walk_model
-from pymc.pytensorf import replace_rvs_by_values
+from pymc.logprob.utils import replace_rvs_by_values
 from pymc.testing import assert_no_rvs
 
 
-def test_factorized_joint_logprob_basic():
-    # A simple check for when `factorized_joint_logprob` is the same as `logprob`
+def test_conditional_logp_basic():
+    # A simple check for when `conditional_logp` is the same as `logprob`
     a = pt.random.uniform(0.0, 1.0)
     a.name = "a"
     a_value_var = a.clone()
@@ -93,9 +84,9 @@ def test_factorized_joint_logprob_basic():
     # We need to replace the reference to `sigma` in `Y` with its value
     # variable
     ll_Y = logp(Y, y_value_var)
-    (ll_Y,), _ = rvs_to_value_vars(
+    (ll_Y,) = replace_rvs_by_values(
         [ll_Y],
-        initial_replacements={sigma: sigma_value_var},
+        rvs_to_values={sigma: sigma_value_var},
     )
     total_ll_exp = logp(sigma, sigma_value_var) + ll_Y
 
@@ -118,13 +109,13 @@ def test_factorized_joint_logprob_basic():
     # There shouldn't be any `RandomVariable`s in the resulting graph
     assert_no_rvs(b_logp_combined)
 
-    res_ancestors = list(walk_model((b_logp_combined,), walk_past_rvs=True))
+    res_ancestors = list(ancestors((b_logp_combined,)))
     assert b_value_var in res_ancestors
     assert c_value_var in res_ancestors
     assert a_value_var in res_ancestors
 
 
-def test_factorized_joint_logprob_multi_obs():
+def test_conditional_logp_multi_obs():
     a = pt.random.uniform(0.0, 1.0)
     b = pt.random.normal(0.0, 1.0)
 
@@ -151,7 +142,7 @@ def test_factorized_joint_logprob_multi_obs():
     assert equal_computations([logp_res_comb], [exp_logp_comb])
 
 
-def test_factorized_joint_logprob_diff_dims():
+def test_conditional_logp_diff_dims():
     M = pt.matrix("M")
     x = pt.random.normal(0, 1, size=M.shape[1], name="X")
     y = pt.random.normal(M.dot(x), 1, name="Y")
@@ -177,27 +168,13 @@ def test_factorized_joint_logprob_diff_dims():
     assert exp_logp_val == pytest.approx(logp_val)
 
 
-def test_incsubtensor_original_values_output_dict():
-    """
-    Test that the original un-incsubtensor value variable appears an the key of
-    the logprob factor
-    """
-
-    base_rv = pt.random.normal(0, 1, size=2)
-    rv = pt.set_subtensor(base_rv[0], 5)
-    vv = rv.clone()
-
-    logp_dict = conditional_logp({rv: vv})
-    assert vv in logp_dict
-
-
 def test_persist_inputs():
     """Make sure we don't unnecessarily clone variables."""
     x = pt.scalar("x")
     beta_rv = pt.random.normal(0, 1, name="beta")
     Y_rv = pt.random.normal(beta_rv * x, 1, name="y")
 
-    beta_vv = beta_rv.type()
+    beta_vv = beta_rv.clone()
     y_vv = Y_rv.clone()
 
     logp = conditional_logp({beta_rv: beta_vv, Y_rv: y_vv})
@@ -207,6 +184,7 @@ def test_persist_inputs():
 
     # Make sure we don't clone value variables when they're graphs.
     y_vv_2 = y_vv * 2
+    y_vv_2.name = "y_2"
     logp_2 = conditional_logp({beta_rv: beta_vv, Y_rv: y_vv_2})
     logp_2_combined = pt.sum([pt.sum(factor) for factor in logp_2.values()])
 
@@ -223,7 +201,7 @@ def test_persist_inputs():
     assert y_vv_2 in ancestors([logp_2_combined])
 
 
-def test_warn_random_found_factorized_joint_logprob():
+def test_warn_random_found_conditional_logp():
     x_rv = pt.random.normal(name="x")
     y_rv = pt.random.normal(x_rv, 1, name="y")
 
@@ -248,7 +226,7 @@ def test_multiple_rvs_to_same_value_raises():
         conditional_logp({x_rv1: x, x_rv2: x})
 
 
-def test_joint_logp_basic():
+def test_transformed_conditional_logp():
     """Make sure we can compute a log-likelihood for a hierarchical model with transforms."""
 
     with pm.Model() as m:
@@ -274,58 +252,10 @@ def test_joint_logp_basic():
     # There shouldn't be any `RandomVariable`s in the resulting graph
     assert_no_rvs(b_logp)
 
-    res_ancestors = list(walk_model((b_logp,)))
+    res_ancestors = list(ancestors((b_logp,)))
     assert b_value_var in res_ancestors
     assert c_value_var in res_ancestors
     assert a_value_var in res_ancestors
-
-
-@pytest.mark.parametrize(
-    "indices, size",
-    [
-        (slice(0, 2), 5),
-        (np.r_[True, True, False, False, True], 5),
-        (np.r_[0, 1, 4], 5),
-        ((np.array([0, 1, 4]), np.array([0, 1, 4])), (5, 5)),
-    ],
-)
-def test_joint_logp_incsubtensor(indices, size):
-    """Make sure we can compute a log-likelihood for ``Y[idx] = data`` where ``Y`` is univariate."""
-
-    mu = pm.floatX(np.power(10, np.arange(np.prod(size)))).reshape(size)
-    data = mu[indices]
-    sigma = 0.001
-    rng = np.random.RandomState(232)
-    a_val = rng.normal(mu, sigma, size=size).astype(pytensor.config.floatX)
-
-    rng = pytensor.shared(rng, borrow=False)
-    a = pm.Normal.dist(mu, sigma, size=size, rng=rng)
-    a_value_var = a.type()
-    a.name = "a"
-
-    a_idx = pt.set_subtensor(a[indices], data)
-
-    assert isinstance(a_idx.owner.op, (IncSubtensor, AdvancedIncSubtensor, AdvancedIncSubtensor1))
-
-    a_idx_value_var = a_idx.type()
-    a_idx_value_var.name = "a_idx_value"
-
-    a_idx_logp = transformed_conditional_logp(
-        (a_idx,),
-        rvs_to_values={a_idx: a_value_var},
-        rvs_to_transforms={},
-    )
-
-    logp_vals = a_idx_logp[0].eval({a_value_var: a_val})
-
-    # The indices that were set should all have the same log-likelihood values,
-    # because the values they were set to correspond to the unique means along
-    # that dimension.  This helps us confirm that the log-likelihood is
-    # associating the assigned values with their correct parameters.
-    a_val_idx = a_val.copy()
-    a_val_idx[indices] = data
-    exp_obs_logps = sp.norm.logpdf(a_val_idx, mu, sigma)
-    np.testing.assert_almost_equal(logp_vals, exp_obs_logps)
 
 
 def test_model_unchanged_logprob_access():
