@@ -113,6 +113,12 @@ from pymc.distributions.timeseries import (
 )
 from pymc.distributions.truncated import Truncated
 
+# now dispatched stats are being initialized
+# isort: off
+import pymc.distributions.stats
+
+# isort: on
+
 __all__ = [
     "Uniform",
     "Flat",
