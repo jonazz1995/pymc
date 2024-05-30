@@ -85,7 +85,8 @@ def test_jax_PosDefMatrix():
     [
         pytest.param(1),
         pytest.param(
-            2, marks=pytest.mark.skipif(len(jax.devices()) < 2, reason="not enough devices")
+            2,
+            marks=pytest.mark.skipif(len(jax.devices()) < 2, reason="not enough devices"),
         ),
     ],
 )
@@ -264,7 +265,11 @@ def test_get_jaxified_logp():
 @pytest.fixture(scope="module")
 def model_test_idata_kwargs() -> pm.Model:
     with pm.Model(
-        coords={"x_coord": ["a", "b"], "x_coord2": [1, 2], "z_coord": ["apple", "banana", "orange"]}
+        coords={
+            "x_coord": ["a", "b"],
+            "x_coord2": [1, 2],
+            "z_coord": ["apple", "banana", "orange"],
+        }
     ) as m:
         x = pm.Normal("x", shape=(2,), dims=["x_coord"])
         _ = pm.Normal("y", x, observed=[0, 0])
@@ -371,7 +376,8 @@ def test_get_batched_jittered_initial_points():
     [
         pytest.param(1),
         pytest.param(
-            2, marks=pytest.mark.skipif(len(jax.devices()) < 2, reason="not enough devices")
+            2,
+            marks=pytest.mark.skipif(len(jax.devices()) < 2, reason="not enough devices"),
         ),
     ],
 )
@@ -517,3 +523,31 @@ def test_dirichlet_multinomial():
     dm = DirichletMultinomial.dist(n=5, a=np.eye(3) * 1e6 + 0.01)
     dm_draws = pm.draw(dm, mode="JAX")
     np.testing.assert_equal(dm_draws, np.eye(3) * 5)
+
+
+@pytest.mark.parametrize("method", ["advi", "fullrank_advi"])
+def test_vi_sampling_jax(method):
+    with pm.Model() as model:
+        x = pm.Normal("x")
+        pm.fit(10, method=method, fn_kwargs=dict(mode="JAX"))
+
+
+@pytest.mark.xfail(
+    reason="""
+During equilibrium rewriter this error happens. Probably one of the routines in SVGD is problematic.
+
+TypeError: The broadcast pattern of the output of scan
+(Matrix(float64, shape=(?, 1))) is inconsistent with the one provided in `output_info`
+(Vector(float64, shape=(?,))). The output on axis 0 is `True`, but it is `False` on axis
+1 in `output_info`. This can happen if one of the dimension is fixed to 1 in the input,
+while it is still variable in the output, or vice-verca. You have to make them consistent,
+e.g. using pytensor.tensor.{unbroadcast, specify_broadcastable}.
+
+Instead of fixing this error it makes sense to rework the internals of the variational to utilize
+pytensor vectorize instead of scan.
+"""
+)
+def test_vi_sampling_jax_svgd():
+    with pm.Model():
+        x = pm.Normal("x")
+        pm.fit(10, method="svgd", fn_kwargs=dict(mode="JAX"))
