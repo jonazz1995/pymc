@@ -25,6 +25,7 @@ from typing import (
     Literal,
     Optional,
     TypeVar,
+    Union,
     cast,
     overload,
 )
@@ -468,6 +469,11 @@ class Model(WithMemoization, metaclass=ContextMeta):
                 # Variable will belong to root and second
                 z = pm.Normal("z", mu=y)  # Variable wil be named "root::second::z"
 
+            # Set None for standalone model
+            with pm.Model(name="third", model=None) as third:
+                # Variable will belong to third only
+                w = pm.Normal("w")  # Variable wil be named "third::w"
+
 
     Set `check_bounds` to False for models with only continuous variables and default transformers
     PyMC will remove the bounds check from the model logp which can speed up sampling
@@ -488,13 +494,13 @@ class Model(WithMemoization, metaclass=ContextMeta):
 
         def __exit__(self, exc_type: None, exc_val: None, exc_tb: None) -> None: ...
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args, model: Union[Literal[UNSET], None, "Model"] = UNSET, **kwargs):
         # resolves the parent instance
         instance = super().__new__(cls)
-        if kwargs.get("model") is not None:
-            instance._parent = kwargs.get("model")
-        else:
+        if model is UNSET:
             instance._parent = cls.get_context(error_if_none=False)
+        else:
+            instance._parent = model
         return instance
 
     @staticmethod
@@ -510,9 +516,9 @@ class Model(WithMemoization, metaclass=ContextMeta):
         check_bounds=True,
         *,
         coords_mutable=None,
-        model=None,
+        model: Union[Literal[UNSET], None, "Model"] = UNSET,
     ):
-        del model  # used in __new__
+        del model  # used in __new__ to define the parent of this model
         self.name = self._validate_name(name)
         self.check_bounds = check_bounds
 
