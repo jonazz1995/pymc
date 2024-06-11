@@ -130,6 +130,34 @@ class TestBaseModel:
         assert m["d"] is model["one_more::d"]
         assert m["one_more::d"] is model["one_more::d"]
 
+    def test_docstring_example(self):
+        with pm.Model(name="root") as root:
+            x = pm.Normal("x")  # Variable wil be named "root::x"
+
+            with pm.Model(name="first") as first:
+                # Variable will belong to root and first
+                y = pm.Normal("y", mu=x)  # Variable wil be named "root::first::y"
+
+            # Can pass parent model explicitly
+            with pm.Model(name="second", model=root) as second:
+                # Variable will belong to root and second
+                z = pm.Normal("z", mu=y)  # Variable wil be named "root::second::z"
+
+            # Set None for standalone model
+            with pm.Model(name="third", model=None) as third:
+                # Variable will belong to third only
+                w = pm.Normal("w")  # Variable wil be named "third::w"
+
+        assert x.name == "root::x"
+        assert y.name == "root::first::y"
+        assert z.name == "root::second::z"
+        assert w.name == "third::w"
+
+        assert set(root.basic_RVs) == {x, y, z}
+        assert set(first.basic_RVs) == {y}
+        assert set(second.basic_RVs) == {z}
+        assert set(third.basic_RVs) == {w}
+
 
 class TestNested:
     def test_nest_context_works(self):
@@ -1077,22 +1105,6 @@ def test_compile_fn():
     np.testing.assert_allclose(result_compute, result_expect)
 
 
-def test_model_pytensor_config():
-    assert pytensor.config.mode != "JAX"
-    with pytest.warns(FutureWarning, match="pytensor_config is deprecated"):
-        m = pm.Model(pytensor_config=dict(mode="JAX"))
-    with m:
-        assert pytensor.config.mode == "JAX"
-    assert pytensor.config.mode != "JAX"
-
-
-def test_deprecated_model_property():
-    m = pm.Model()
-    with pytest.warns(FutureWarning, match="Model.model property is deprecated"):
-        m_property = m.model
-    assert m is m_property
-
-
 def test_model_parent_set_programmatically():
     with pm.Model() as model:
         x = pm.Normal("x")
@@ -1100,7 +1112,18 @@ def test_model_parent_set_programmatically():
     with pm.Model(model=model):
         y = pm.Normal("y")
 
+    with model:
+        # Default inherits from model
+        with pm.Model():
+            z_in = pm.Normal("z_in")
+
+        # Explict None opts out of model context
+        with pm.Model(model=None):
+            z_out = pm.Normal("z_out")
+
     assert "y" in model.named_vars
+    assert "z_in" in model.named_vars
+    assert "z_out" not in model.named_vars
 
 
 class TestModelContext:
