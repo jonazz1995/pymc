@@ -272,6 +272,7 @@ def _sample_external_nuts(
     var_names: Sequence[str] | None,
     progressbar: bool,
     idata_kwargs: dict | None,
+    compute_convergence_checks: bool,
     nuts_sampler_kwargs: dict | None,
     **kwargs,
 ):
@@ -363,6 +364,7 @@ def _sample_external_nuts(
             progressbar=progressbar,
             nuts_sampler=sampler,
             idata_kwargs=idata_kwargs,
+            compute_convergence_checks=compute_convergence_checks,
             **nuts_sampler_kwargs,
         )
         return idata
@@ -717,6 +719,7 @@ def sample(
             raise ValueError(
                 "Model can not be sampled with NUTS alone. Your model is probably not continuous."
             )
+
         with joined_blas_limiter():
             return _sample_external_nuts(
                 sampler=nuts_sampler,
@@ -730,6 +733,7 @@ def sample(
                 var_names=var_names,
                 progressbar=progressbar,
                 idata_kwargs=idata_kwargs,
+                compute_convergence_checks=compute_convergence_checks,
                 nuts_sampler_kwargs=nuts_sampler_kwargs,
                 **kwargs,
             )
