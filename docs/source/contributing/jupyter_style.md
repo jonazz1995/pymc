@@ -35,6 +35,8 @@ This guide does not teach nor cover MyST extensively, only gives some opinionate
   libraries documentations. Use [sphinx cross-references](https://docs.readthedocs.io/en/stable/guides/cross-referencing-with-sphinx.html)
   instead.
 
+  * For instance, to link to another notebook, you could use an explicit link in the markdown text: "this model uses the \[Kronecker product](GP-Kron.myst.md)". See {ref}`this page <myst:syntax/targets>` for more details.
+
   :::{caution}
   Using urls links breaks self referencing in versioned docs! And at the same time they are
   less robust than sphinx cross-references.
@@ -42,6 +44,37 @@ This guide does not teach nor cover MyST extensively, only gives some opinionate
 
   * When linking to other notebooks, always use a `ref` type cross-reference pointing
     to the target in the {ref}`jupyter_style_first_cell`.
+
+* Here are more guidances on reference links:
+
+#### References to targets within the current project
+That is, notebooks in pymc-examples referring to other notebooks in pymc-examples.
+
+```
+{ref}`explicit text <anchor_id>`
+[explicit text](#anchor_id)
+```
+
+#### References to targets of other projects
+These can be to any project defined in the [intersphinx mapping](https://github.com/pymc-devs/pymc-examples/blob/main/examples/conf.py#L175). For example, from pymc-examples to pymc main docs, or to arviz docs or to matplotlib docs; it doesn't matter when it comes to syntax.
+
+```
+{ref}`explicit text <key:anchor_id>`
+[explicit text](inv:key:*:ref#anchor_id)
+```
+
+where key is one of the keys defined in the [intersphinx mapping](https://github.com/pymc-devs/pymc-examples/blob/main/examples/conf.py#L175), such as `pymc`, `arviz`, `numpy`...
+
+#### References to python objects
+
+```
+{type}`import.path`  # to show full import path
+{type}`~import.path`  # to show only object name
+```
+
+where type is func for functions, meth for methods, class for classes, prop for property, etc.
+
+Now let's continue with the MysT guidelines.
 
 * If the output (or even code and output) of a cell is not necessary to follow the
   notebook or it is very long and can break the flow of reading, consider hiding
